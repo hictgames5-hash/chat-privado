@@ -1,0 +1,65 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat Privado (2 Pessoas)</title>
+  <style>
+    body { font-family: sans-serif; background: #1e1e1e; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    #chat-container { width: 100%; max-width: 400px; background: #2d2d2d; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; height: 500px; }
+    #mensagens { flex: 1; overflow-y: auto; margin-bottom: 10px; border: 1px solid #444; border-radius: 4px; padding: 10px; background: #181818; }
+    .msg { margin-bottom: 8px; padding: 6px 10px; border-radius: 4px; max-width: 80%; }
+    .minha { background: #007acc; align-self: flex-end; margin-left: auto; }
+    .outro { background: #3a3a3a; }
+    .sistema { color: #888; font-style: italic; font-size: 0.85em; text-align: center; }
+    #controles { display: flex; gap: 8px; }
+    input { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff; }
+    button { padding: 8px 16px; background: #007acc; border: none; color: white; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<div id="chat-container">
+  <div id="mensagens"></div>
+  <div id="controles">
+    <input type="text" id="inputMensagem" placeholder="Digite uma mensagem..." placeholder="Mensagem">
+    <button onclick="enviar()">Enviar</button>
+  </div>
+</div>
+
+<script>
+  // Conecta ao WebSocket do próprio servidor
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${protocol}//${location.host}`);
+  const areaMensagens = document.getElementById('mensagens');
+  const input = document.getElementById('inputMensagem');
+
+  ws.onmessage = (event) => {
+    const dados = JSON.parse(event.data);
+    exibirMensagem(dados.texto, dados.tipo || 'outro');
+  };
+
+  function enviar() {
+    const texto = input.value.trim();
+    if (!texto) return;
+
+    // Envia o texto formatado via WebSocket
+    ws.send(JSON.stringify({ tipo: 'outro', texto: texto }));
+    exibirMensagem(texto, 'minha');
+    input.value = '';
+  }
+
+  function exibirMensagem(texto, tipo) {
+    const div = document.createElement('div');
+    div.classList.add('msg', tipo);
+    div.textContent = texto;
+    areaMensagens.appendChild(div);
+    areaMensagens.scrollTop = areaMensagens.scrollHeight;
+  }
+
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') enviar();
+  });
+</script>
+
+</body>
+</html>
