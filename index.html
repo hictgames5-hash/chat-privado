@@ -1,0 +1,254 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat Privado (2 Pessoas)</title>
+  <style>
+    body { font-family: sans-serif; background: #1e1e1e; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    #chat-container { width: 100%; max-width: 480px; background: #2d2d2d; border-radius: 8px; padding: 15px; display: flex; flex-direction: column; height: 550px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    
+    #topo-acoes { display: flex; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+    .btn-top { background: #444; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+    .btn-top:hover { background: #555; }
+
+    #mensagens { flex: 1; overflow-y: auto; margin-bottom: 10px; border: 1px solid #444; border-radius: 4px; padding: 10px; background: #181818; display: flex; flex-direction: column; gap: 10px; }
+    
+    .msg-wrapper { display: flex; flex-direction: column; max-width: 80%; }
+    .msg-wrapper.minha { align-self: flex-end; }
+    .msg-wrapper.outro { align-self: flex-start; }
+    .msg-wrapper.sistema { align-self: center; max-width: 100%; }
+
+    .msg { padding: 8px 12px; border-radius: 6px; word-break: break-word; font-size: 0.95em; position: relative; }
+    .minha .msg { background: #007acc; }
+    .outro .msg { background: #3a3a3a; }
+    .sistema .msg { background: transparent; color: #888; font-style: italic; font-size: 0.85em; text-align: center; }
+
+    .acoes-msg { display: flex; gap: 6px; margin-top: 3px; font-size: 0.75em; }
+    .minha .acoes-msg { justify-content: flex-end; }
+    .outro .acoes-msg { justify-content: flex-start; }
+    
+    .btn-acao { background: none; border: none; color: #aaa; cursor: pointer; padding: 0 2px; font-size: 0.85em; }
+    .btn-acao:hover { color: #fff; text-decoration: underline; }
+
+    #controles { display: flex; gap: 8px; }
+    input[type="text"] { flex: 1; padding: 10px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff; outline: none; }
+    button.btn-enviar { padding: 10px 18px; background: #007acc; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    button.btn-enviar:hover { background: #005999; }
+  </style>
+</head>
+<body>
+
+<div id="chat-container">
+  <div id="topo-acoes">
+    <button class="btn-top" onclick="exportarConversa()">💾 Salvar Conversa</button>
+    <button class="btn-top" onclick="document.getElementById('inputImportar').click()">📂 Carregar Conversa</button>
+    <input type="file" id="inputImportar" accept=".json" style="display: none;" onchange="importarConversa(event)">
+  </div>
+
+  <div id="mensagens"></div>
+
+  <div id="controles">
+    <input type="text" id="inputMensagem" placeholder="Digite uma mensagem...">
+    <button class="btn-enviar" onclick="enviar()">Enviar</button>
+  </div>
+</div>
+
+<script>
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${protocol}//${location.host}`);
+  const areaMensagens = document.getElementById('mensagens');
+  const input = document.getElementById('inputMensagem');
+
+  // Guarda todas as mensagens ativas na tela
+  let historicoMensagens = [];
+
+  ws.onmessage = (event) => {
+    const dados = JSON.parse(event.data);
+
+    if (dados.tipo === 'nova_msg') {
+      adicionarMensagemNaTela(dados.id, dados.texto, 'outro');
+      historicoMensagens.push({ id: dados.id, texto: dados.texto, tipo: 'outro' });
+    } 
+    else if (dados.tipo === 'editar_msg') {
+      atualizarMensagemNaTela(dados.id, dados.texto);
+      const item = historicoMensagens.find(m => m.id === dados.id);
+      if (item) item.texto = dados.texto;
+    } 
+    else if (dados.tipo === 'excluir_msg') {
+      removerMensagemDaTela(dados.id);
+      historicoMensagens = historicoMensagens.filter(m => m.id !== dados.id);
+    } 
+    else if (dados.tipo === 'sistema') {
+      adicionarMensagemSistema(dados.texto);
+    }
+  };
+
+  function enviar() {
+    const texto = input.value.trim();
+    if (!texto) return;
+
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+
+    // Envia ao servidor
+    ws.send(JSON.stringify({ tipo: 'nova_msg', id: id, texto: texto }));
+
+    // Exibe localmente
+    adicionarMensagemNaTela(id, texto, 'minha');
+    historicoMensagens.push({ id: id, texto: texto, tipo: 'minha' });
+
+    input.value = '';
+  }
+
+  function adicionarMensagemNaTela(id, texto, tipo) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('msg-wrapper', tipo);
+    wrapper.id = `msg-${id}`;
+
+    const divMsg = document.createElement('div');
+    divMsg.classList.add('msg');
+    divMsg.textContent = texto;
+    wrapper.appendChild(divMsg);
+
+    if (tipo !== 'sistema') {
+      const acoes = document.createElement('div');
+      acoes.classList.add('acoes-msg');
+
+      // Botão Copiar
+      const btnCopiar = document.createElement('button');
+      btnCopiar.classList.add('btn-acao');
+      btnCopiar.textContent = 'Copiar';
+      btnCopiar.onclick = () => copiarTexto(texto);
+      acoes.appendChild(btnCopiar);
+
+      // Botões de Editar e Excluir apenas para mensagens próprias
+      if (tipo === 'minha') {
+        const btnEditar = document.createElement('button');
+        btnEditar.classList.add('btn-acao');
+        btnEditar.textContent = 'Editar';
+        btnEditar.onclick = () => editarMensagem(id);
+
+        const btnExcluir = document.createElement('button');
+        btnExcluir.classList.add('btn-acao');
+        btnExcluir.textContent = 'Excluir';
+        btnExcluir.onclick = () => excluirMensagem(id);
+
+        acoes.appendChild(btnEditar);
+        acoes.appendChild(btnExcluir);
+      }
+
+      wrapper.appendChild(acoes);
+    }
+
+    areaMensagens.appendChild(wrapper);
+    areaMensagens.scrollTop = areaMensagens.scrollHeight;
+  }
+
+  function adicionarMensagemSistema(texto) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('msg-wrapper', 'sistema');
+    const divMsg = document.createElement('div');
+    divMsg.classList.add('msg');
+    divMsg.textContent = texto;
+    wrapper.appendChild(divMsg);
+    areaMensagens.appendChild(wrapper);
+    areaMensagens.scrollTop = areaMensagens.scrollHeight;
+  }
+
+  function copiarTexto(texto) {
+    navigator.clipboard.writeText(texto).then(() => {
+      alert('Mensagem copiada!');
+    });
+  }
+
+  function editarMensagem(id) {
+    const wrapper = document.getElementById(`msg-${id}`);
+    if (!wrapper) return;
+    const msgDiv = wrapper.querySelector('.msg');
+    
+    const novoTexto = prompt('Edite sua mensagem:', msgDiv.textContent);
+    if (novoTexto !== null && novoTexto.trim() !== '') {
+      const textoFormatado = novoTexto.trim();
+      msgDiv.textContent = textoFormatado;
+
+      // Atualiza histórico local
+      const item = historicoMensagens.find(m => m.id === id);
+      if (item) item.texto = textoFormatado;
+
+      // Avisa o servidor
+      ws.send(JSON.stringify({ tipo: 'editar_msg', id: id, texto: textoFormatado }));
+    }
+  }
+
+  function atualizarMensagemNaTela(id, novoTexto) {
+    const wrapper = document.getElementById(`msg-${id}`);
+    if (wrapper) {
+      const msgDiv = wrapper.querySelector('.msg');
+      if (msgDiv) msgDiv.textContent = novoTexto;
+    }
+  }
+
+  function excluirMensagem(id) {
+    if (confirm('Deseja realmente apagar esta mensagem?')) {
+      removerMensagemDaTela(id);
+
+      // Remove do histórico local
+      historicoMensagens = historicoMensagens.filter(m => m.id !== id);
+
+      // Avisa o servidor
+      ws.send(JSON.stringify({ tipo: 'excluir_msg', id: id }));
+    }
+  }
+
+  function removerMensagemDaTela(id) {
+    const wrapper = document.getElementById(`msg-${id}`);
+    if (wrapper) wrapper.remove();
+  }
+
+  // --- Salvar e Importar Conversa ---
+  function exportarConversa() {
+    if (historicoMensagens.length === 0) {
+      alert('Não há mensagens para salvar.');
+      return;
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historicoMensagens, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `conversa_chat_${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }
+
+  function importarConversa(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const mensagensCarregadas = JSON.parse(e.target.result);
+        if (Array.isArray(mensagensCarregadas)) {
+          areaMensagens.innerHTML = '';
+          historicoMensagens = mensagensCarregadas;
+          mensagensCarregadas.forEach(msg => {
+            if (msg.tipo === 'minha' || msg.tipo === 'outro') {
+              adicionarMensagemNaTela(msg.id, msg.texto, msg.tipo);
+            }
+          });
+          adicionarMensagemSistema('--- Conversa importada com sucesso ---');
+        }
+      } catch (err) {
+        alert('Erro ao carregar o arquivo. Certifique-se de que é um arquivo de conversa válido.');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // Reseta o input de arquivo
+  }
+
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') enviar();
+  });
+</script>
+
+</body>
+</html>
