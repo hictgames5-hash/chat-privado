@@ -297,7 +297,7 @@
 </div>
 
 <script>
-  // 1. PRIMEIRO: Declara todas as variáveis globais aqui em cima!
+  // 1. Variáveis Globais no topo
   let ws;
   let somAtivo = true;
   let historicoMensagens = [];
@@ -313,10 +313,10 @@
   let meuApelido = localStorage.getItem('chat_apelido') || '';
   if (meuApelido) {
     document.getElementById('tela-apelido').style.display = 'none';
-    conectarWebSocket(); // Agora funciona porque 'ws' já foi declarado acima!
+    conectarWebSocket();
   }
 
-  // 3. Resto das funções (conectarWebSocket, enviar, etc.)
+  // 3. Conexão WebSocket
   function conectarWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}`);
@@ -341,7 +341,8 @@
       else if (dados.tipo === 'status_host') {
         souHost = dados.ehHost;
         if (souHost) {
-          document.getElementById('btnPainelHost').style.display = 'inline-block';
+          const btnHost = document.getElementById('btnPainelHost');
+          if (btnHost) btnHost.style.display = 'inline-block';
         }
       }
       else if (dados.tipo === 'atualizar_vagas') {
@@ -361,6 +362,7 @@
     };
   }
 
+  // 4. Envio de mensagens
   function enviar() {
     const input = document.getElementById('inputMensagem');
     const texto = input.value.trim();
@@ -403,6 +405,102 @@
     conectarWebSocket();
   }
 
+  // 5. Funções dos 6 Botões do Topo!
+  function exportarConversa() {
+    if (historicoMensagens.length === 0) {
+      mostrarToast('Nenhuma mensagem para salvar.');
+      return;
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historicoMensagens, null, 2));
+    const a = document.createElement('a');
+    a.setAttribute("href", dataStr);
+    a.setAttribute("download", `chat_${salaAtual}.json`);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function importarConversa(event) {
+    const file = event.target.files ? event.target.files[0] : null;
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const msgs = JSON.parse(e.target.result);
+        if (Array.isArray(msgs)) {
+          document.getElementById('mensagens').innerHTML = '';
+          historicoMensagens = msgs;
+          msgs.forEach(msg => {
+            if (msg.tipo === 'minha' || msg.tipo === 'outro') {
+              adicionarMensagemNaTela(msg.id, msg.autor, msg.texto, msg.tipo, msg.horario);
+            }
+          });
+          adicionarMensagemSistema('--- Histórico Carregado ---');
+        }
+      } catch (err) {
+        mostrarToast('Erro ao importar o ficheiro JSON.');
+      }
+    };
+    reader.readAsText(file);
+    if (event.target) event.target.value = '';
+  }
+
+  function abrirConfig() {
+    const el = document.getElementById('exibicao-apelido-config');
+    if (el) el.textContent = meuApelido;
+    const tela = document.getElementById('tela-config');
+    if (tela) tela.style.display = 'flex';
+  }
+
+  function fecharConfig() {
+    const tela = document.getElementById('tela-config');
+    if (tela) tela.style.display = 'none';
+  }
+
+  function compartilharConvite() {
+    const link = `${window.location.origin}/?sala=${salaAtual}`;
+    navigator.clipboard.writeText(link).then(() => {
+      mostrarToast('Link de convite copiado!');
+    }).catch(() => {
+      prompt('Copia o link de convite:', link);
+    });
+  }
+
+  function sairDaSala() {
+    const novaSala = prompt('Para qual sala deseja ir?');
+    if (novaSala && novaSala.trim() !== '') {
+      const salaLimpa = novaSala.trim().toLowerCase().replace(/\s+/g, '-');
+      window.location.href = `?sala=${salaLimpa}`;
+    }
+  }
+
+  function abrirPainelHost() {
+    if (!souHost) return;
+    const acao = prompt('Painel Host:\n1 - Definir Senha\n2 - Limite de Pessoas\nDigite 1 ou 2:');
+    if (acao === '1') {
+      const novaSenha = prompt('Digite a nova senha (deixe em branco para remover):');
+      ws.send(JSON.stringify({ tipo: 'config_senha', senha: novaSenha || '' }));
+    } else if (acao === '2') {
+      const novoLimite = prompt('Limite máximo de pessoas:');
+      if (novoLimite && !isNaN(novoLimite)) {
+        ws.send(JSON.stringify({ tipo: 'config_limite', limite: parseInt(novoLimite) }));
+      }
+    }
+  }
+
+  // 6. Utilitários de Interface
+  function mostrarToast(mensagem) {
+    const toast = document.getElementById('toast-notificacao');
+    if (toast) {
+      toast.textContent = mensagem;
+      toast.style.display = 'block';
+      setTimeout(() => { toast.style.display = 'none'; }, 3000);
+    } else {
+      alert(mensagem);
+    }
+  }
+
   function adicionarMensagemNaTela(id, autor, texto, tipo, horario) {
     const area = document.getElementById('mensagens');
     const wrapper = document.createElement('div');
@@ -440,6 +538,36 @@
     area.scrollTop = area.scrollHeight;
   }
 
+  function enviarSenha() {
+    const senha = document.getElementById('inputSenhaSala').value;
+    document.getElementById('erro-senha').style.display = 'none';
+    ws.send(JSON.stringify({ tipo: 'verificar_senha', senha: senha }));
+  }
+
+  function alternarSom() {
+    somAtivo = !somAtivo;
+    const btn = document.getElementById('btnSomToggle');
+    if (btn) btn.textContent = somAtivo ? 'ATIVADO' : 'DESATIVADO';
+  }
+
+  function alternarTema() {
+    document.body.classList.toggle('light-mode');
+  }
+
+  function editarApelido() {
+    const novoNome = prompt('Digite o seu novo apelido:', meuApelido);
+    if (novoNome && novoNome.trim() !== '') {
+      meuApelido = novoNome.trim();
+      localStorage.setItem('chat_apelido', meuApelido);
+      const el = document.getElementById('exibicao-apelido-config');
+      if (el) el.textContent = meuApelido;
+      mostrarToast('Apelido atualizado!');
+      if (ws) {
+        ws.send(JSON.stringify({ tipo: 'atualizar_apelido', apelido: meuApelido }));
+      }
+    }
+  }
+
   function tocarSomBip() {
     if (!somAtivo) return;
     try {
@@ -461,6 +589,5 @@
     if (e.key === 'Enter') enviar();
   });
 </script>
-
 </body>
 </html>
