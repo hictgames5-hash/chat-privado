@@ -39,16 +39,14 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        // Define autenticação imediata se a sala não possui senha
-        const precisaSenha = sala.senha !== '' && ws !== sala.hostWs;
-        const clienteInfo = { ws, apelido, autenticado: !precisaSenha };
-        
-        ws.clienteRef = clienteInfo;
+        const clienteInfo = { ws, apelido, autenticado: sala.senha === '' };
         sala.clientes.push(ws);
+        ws.clienteRef = clienteInfo;
 
-        if (precisaSenha) {
+        if (sala.senha !== '' && ws !== sala.hostWs) {
           ws.send(JSON.stringify({ tipo: 'pedir_senha' }));
         } else {
+          clienteInfo.autenticado = true;
           ws.send(JSON.stringify({ tipo: 'acesso_liberado' }));
         }
 
@@ -123,7 +121,7 @@ wss.on('connection', (ws) => {
       }
 
     } catch (e) {
-      console.log('Erro no servidor:', e);
+      console.log('Erro:', e);
     }
   });
 
