@@ -297,35 +297,7 @@
 </div>
 
 <script>
-  const params = new URLSearchParams(window.location.search);
-  let salaAtual = params.get('sala') || 'geral';
-  document.getElementById('nome-sala-exibicao').textContent = salaAtual;
-
-  let meuApelido = localStorage.getItem('chat_apelido') || '';
-  if (meuApelido) {
-    document.getElementById('tela-apelido').style.display = 'none';
-  }
-
-  function mostrarToast(mensagem) {
-    const toast = document.getElementById('toast-notificacao');
-    toast.textContent = mensagem;
-    toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 3000);
-  }
-
-  function salvarApelido() {
-    const val = document.getElementById('inputApelido').value.trim();
-    if (!val) return;
-    meuApelido = val;
-    localStorage.setItem('chat_apelido', meuApelido);
-    document.getElementById('tela-apelido').style.display = 'none';
-    conectarWebSocket();
-  }
-
-  if (meuApelido) {
-    conectarWebSocket();
-  }
-
+  // 1. PRIMEIRO: Declara todas as variáveis globais aqui em cima!
   let ws;
   let somAtivo = true;
   let historicoMensagens = [];
@@ -333,6 +305,18 @@
   let estaDigitando = false;
   let souHost = false;
 
+  // 2. Parâmetros e dados do utilizador
+  const params = new URLSearchParams(window.location.search);
+  let salaAtual = params.get('sala') || 'geral';
+  document.getElementById('nome-sala-exibicao').textContent = salaAtual;
+
+  let meuApelido = localStorage.getItem('chat_apelido') || '';
+  if (meuApelido) {
+    document.getElementById('tela-apelido').style.display = 'none';
+    conectarWebSocket(); // Agora funciona porque 'ws' já foi declarado acima!
+  }
+
+  // 3. Resto das funções (conectarWebSocket, enviar, etc.)
   function conectarWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}`);
@@ -372,7 +356,7 @@
         adicionarMensagemSistema(dados.texto);
       }
       else if (dados.tipo === 'digitando') {
-        document.getElementById('indicador-digitando').textContent = dados.estado ? `${dados.autor} está digitando...` : '';
+        document.getElementById('indicador-digitando').textContent = dados.estado ? `${dados.autor} está a digitar...` : '';
       }
     };
   }
@@ -408,6 +392,15 @@
         ws.send(JSON.stringify({ tipo: 'digitando', estado: false }));
       }
     }, 1500);
+  }
+
+  function salvarApelido() {
+    const val = document.getElementById('inputApelido').value.trim();
+    if (!val) return;
+    meuApelido = val;
+    localStorage.setItem('chat_apelido', meuApelido);
+    document.getElementById('tela-apelido').style.display = 'none';
+    conectarWebSocket();
   }
 
   function adicionarMensagemNaTela(id, autor, texto, tipo, horario) {
@@ -447,72 +440,6 @@
     area.scrollTop = area.scrollHeight;
   }
 
-  function enviarSenha() {
-    const senha = document.getElementById('inputSenhaSala').value;
-    document.getElementById('erro-senha').style.display = 'none';
-    ws.send(JSON.stringify({ tipo: 'verificar_senha', senha: senha }));
-  }
-
-  function compartilharConvite() {
-    const link = `${window.location.origin}/?sala=${salaAtual}`;
-    navigator.clipboard.writeText(link).then(() => {
-      mostrarToast('Link de convite copiado!');
-    });
-  }
-
-  function sairDaSala() {
-    const novaSala = prompt('Para qual sala deseja ir?');
-    if (novaSala && novaSala.trim() !== '') {
-      const salaLimpa = novaSala.trim().toLowerCase().replace(/\s+/g, '-');
-      window.location.href = `?sala=${salaLimpa}`;
-    }
-  }
-
-  function abrirConfig() {
-    document.getElementById('exibicao-apelido-config').textContent = meuApelido;
-    document.getElementById('tela-config').style.display = 'flex';
-  }
-
-  function fecharConfig() {
-    document.getElementById('tela-config').style.display = 'none';
-  }
-
-  function alternarSom() {
-    somAtivo = !somAtivo;
-    document.getElementById('btnSomToggle').textContent = somAtivo ? 'ATIVADO' : 'DESATIVADO';
-  }
-
-  function alternarTema() {
-    document.body.classList.toggle('light-mode');
-  }
-
-  function editarApelido() {
-    const novoNome = prompt('Digite seu novo apelido:', meuApelido);
-    if (novoNome && novoNome.trim() !== '') {
-      meuApelido = novoNome.trim();
-      localStorage.setItem('chat_apelido', meuApelido);
-      document.getElementById('exibicao-apelido-config').textContent = meuApelido;
-      mostrarToast('Apelido atualizado!');
-      if (ws) {
-        ws.send(JSON.stringify({ tipo: 'atualizar_apelido', apelido: meuApelido }));
-      }
-    }
-  }
-
-  function abrirPainelHost() {
-    if (!souHost) return;
-    const acao = prompt('Painel Host:\n1 - Definir Senha\n2 - Limite de Pessoas\nDigite 1 ou 2:');
-    if (acao === '1') {
-      const novaSenha = prompt('Digite a nova senha (deixe em branco para remover):');
-      ws.send(JSON.stringify({ tipo: 'config_senha', senha: novaSenha || '' }));
-    } else if (acao === '2') {
-      const novoLimite = prompt('Limite máximo de pessoas:');
-      if (novoLimite && !isNaN(novoLimite)) {
-        ws.send(JSON.stringify({ tipo: 'config_limite', limite: parseInt(novoLimite) }));
-      }
-    }
-  }
-
   function tocarSomBip() {
     if (!somAtivo) return;
     try {
@@ -528,46 +455,6 @@
       osc.start();
       osc.stop(audioCtx.currentTime + 0.15);
     } catch (e) {}
-  }
-
-  function exportarConversa() {
-    if (historicoMensagens.length === 0) {
-      mostrarToast('Nenhuma mensagem para salvar.');
-      return;
-    }
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historicoMensagens, null, 2));
-    const a = document.createElement('a');
-    a.setAttribute("href", dataStr);
-    a.setAttribute("download", `chat_${salaAtual}.json`);
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
-  function importarConversa(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const msgs = JSON.parse(e.target.result);
-        if (Array.isArray(msgs)) {
-          document.getElementById('mensagens').innerHTML = '';
-          historicoMensagens = msgs;
-          msgs.forEach(msg => {
-            if (msg.tipo === 'minha' || msg.tipo === 'outro') {
-              adicionarMensagemNaTela(msg.id, msg.autor, msg.texto, msg.tipo, msg.horario);
-            }
-          });
-          adicionarMensagemSistema('--- Histórico Carregado ---');
-        }
-      } catch (err) {
-        mostrarToast('Erro ao importar o arquivo JSON.');
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
   }
 
   document.getElementById('inputMensagem').addEventListener('keypress', (e) => {
