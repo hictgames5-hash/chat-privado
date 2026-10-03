@@ -363,10 +363,6 @@
       else if (dados.tipo === 'atualizar_vagas') {
         document.getElementById('contador-vagas').textContent = `Participantes: ${dados.atual}/${dados.limite}`;
       }
-      else if (dados.tipo === 'expulso') {
-        mostrarToast('Você foi removido da sala pelo anfitrião.');
-        setTimeout(() => { window.location.href = '/'; }, 1500);
-      }
       else if (dados.tipo === 'nova_msg') {
         adicionarMensagemNaTela(dados.id, dados.autor, dados.texto, 'outro', dados.horario);
         historicoMensagens.push({ id: dados.id, autor: dados.autor, texto: dados.texto, tipo: 'outro', horario: dados.horario });
@@ -381,94 +377,10 @@
     };
   }
 
-  function enviarSenha() {
-    const senha = document.getElementById('inputSenhaSala').value;
-    document.getElementById('erro-senha').style.display = 'none';
-    ws.send(JSON.stringify({ tipo: 'verificar_senha', senha: senha }));
-  }
-
-  function compartilharConvite() {
-    const link = `${window.location.origin}/?sala=${salaAtual}`;
-    navigator.clipboard.writeText(link).then(() => {
-      mostrarToast('Link de convite copiado para a área de transferência!');
-    });
-  }
-
-  function sairDaSala() {
-    const novaSala = prompt('Para qual sala deseja ir? (Ou digite um novo nome para criar uma):');
-    if (novaSala && novaSala.trim() !== '') {
-      const salaLimpa = novaSala.trim().toLowerCase().replace(/\s+/g, '-');
-      window.location.href = `?sala=${salaLimpa}`;
-    }
-  }
-
-  /* CONFIGURAÇÕES */
-  function abrirConfig() {
-    document.getElementById('exibicao-apelido-config').textContent = meuApelido;
-    document.getElementById('tela-config').style.display = 'flex';
-  }
-
-  function fecharConfig() {
-    document.getElementById('tela-config').style.display = 'none';
-  }
-
-  function alternarSom() {
-    somAtivo = !somAtivo;
-    document.getElementById('btnSomToggle').textContent = somAtivo ? 'ATIVADO' : 'DESATIVADO';
-  }
-
-  function alternarTema() {
-    document.body.classList.toggle('light-mode');
-  }
-
-  function editarApelido() {
-    const novoNome = prompt('Digite seu novo nome de usuário:', meuApelido);
-    if (novoNome && novoNome.trim() !== '') {
-      meuApelido = novoNome.trim();
-      localStorage.setItem('chat_apelido', meuApelido);
-      document.getElementById('exibicao-apelido-config').textContent = meuApelido;
-      mostrarToast('Nome de usuário atualizado!');
-      if (ws) {
-        ws.send(JSON.stringify({ tipo: 'atualizar_apelido', apelido: meuApelido }));
-      }
-    }
-  }
-
-  function abrirPainelHost() {
-    if (!souHost) return;
-    const acao = prompt('Painel do Anfitrião:\n1 - Alterar/Definir Senha\n2 - Definir Limite de Participantes\n\nDigite 1 ou 2:');
-    if (acao === '1') {
-      const novaSenha = prompt('Digite a nova senha para o grupo (ou deixe em branco para remover):');
-      ws.send(JSON.stringify({ tipo: 'config_senha', senha: novaSenha || '' }));
-    } else if (acao === '2') {
-      const novoLimite = prompt('Digite o limite máximo de participantes:');
-      if (novoLimite && !isNaN(novoLimite)) {
-        ws.send(JSON.stringify({ tipo: 'config_limite', limite: parseInt(novoLimite) }));
-      }
-    }
-  }
-
-  function tocarSomBip() {
-    if (!somAtivo) return;
-    try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.15);
-    } catch (e) {}
-  }
-
   function enviar() {
     const input = document.getElementById('inputMensagem');
     const texto = input.value.trim();
-    if (!texto) return;
+    if (!texto || !ws || ws.readyState !== WebSocket.OPEN) return;
 
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
     const horario = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -485,14 +397,16 @@
   }
 
   function notificarDigitando() {
-    if (!estaDigitando) {
+    if (!estaDigitando && ws && ws.readyState === WebSocket.OPEN) {
       estaDigitando = true;
       ws.send(JSON.stringify({ tipo: 'digitando', estado: true }));
     }
     clearTimeout(tempoDigitandoTimer);
     tempoDigitandoTimer = setTimeout(() => {
       estaDigitando = false;
-      ws.send(JSON.stringify({ tipo: 'digitando', estado: false }));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ tipo: 'digitando', estado: false }));
+      }
     }, 1500);
   }
 
@@ -531,6 +445,89 @@
     wrapper.appendChild(divMsg);
     area.appendChild(wrapper);
     area.scrollTop = area.scrollHeight;
+  }
+
+  function enviarSenha() {
+    const senha = document.getElementById('inputSenhaSala').value;
+    document.getElementById('erro-senha').style.display = 'none';
+    ws.send(JSON.stringify({ tipo: 'verificar_senha', senha: senha }));
+  }
+
+  function compartilharConvite() {
+    const link = `${window.location.origin}/?sala=${salaAtual}`;
+    navigator.clipboard.writeText(link).then(() => {
+      mostrarToast('Link de convite copiado!');
+    });
+  }
+
+  function sairDaSala() {
+    const novaSala = prompt('Para qual sala deseja ir?');
+    if (novaSala && novaSala.trim() !== '') {
+      const salaLimpa = novaSala.trim().toLowerCase().replace(/\s+/g, '-');
+      window.location.href = `?sala=${salaLimpa}`;
+    }
+  }
+
+  function abrirConfig() {
+    document.getElementById('exibicao-apelido-config').textContent = meuApelido;
+    document.getElementById('tela-config').style.display = 'flex';
+  }
+
+  function fecharConfig() {
+    document.getElementById('tela-config').style.display = 'none';
+  }
+
+  function alternarSom() {
+    somAtivo = !somAtivo;
+    document.getElementById('btnSomToggle').textContent = somAtivo ? 'ATIVADO' : 'DESATIVADO';
+  }
+
+  function alternarTema() {
+    document.body.classList.toggle('light-mode');
+  }
+
+  function editarApelido() {
+    const novoNome = prompt('Digite seu novo apelido:', meuApelido);
+    if (novoNome && novoNome.trim() !== '') {
+      meuApelido = novoNome.trim();
+      localStorage.setItem('chat_apelido', meuApelido);
+      document.getElementById('exibicao-apelido-config').textContent = meuApelido;
+      mostrarToast('Apelido atualizado!');
+      if (ws) {
+        ws.send(JSON.stringify({ tipo: 'atualizar_apelido', apelido: meuApelido }));
+      }
+    }
+  }
+
+  function abrirPainelHost() {
+    if (!souHost) return;
+    const acao = prompt('Painel Host:\n1 - Definir Senha\n2 - Limite de Pessoas\nDigite 1 ou 2:');
+    if (acao === '1') {
+      const novaSenha = prompt('Digite a nova senha (deixe em branco para remover):');
+      ws.send(JSON.stringify({ tipo: 'config_senha', senha: novaSenha || '' }));
+    } else if (acao === '2') {
+      const novoLimite = prompt('Limite máximo de pessoas:');
+      if (novoLimite && !isNaN(novoLimite)) {
+        ws.send(JSON.stringify({ tipo: 'config_limite', limite: parseInt(novoLimite) }));
+      }
+    }
+  }
+
+  function tocarSomBip() {
+    if (!somAtivo) return;
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {}
   }
 
   function exportarConversa() {
