@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 
@@ -39,14 +39,16 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        const clienteInfo = { ws, apelido, autenticado: sala.senha === '' };
-        sala.clientes.push(ws);
+        // Define autenticação imediata se a sala não possui senha
+        const precisaSenha = sala.senha !== '' && ws !== sala.hostWs;
+        const clienteInfo = { ws, apelido, autenticado: !precisaSenha };
+        
         ws.clienteRef = clienteInfo;
+        sala.clientes.push(ws);
 
-        if (sala.senha !== '' && ws !== sala.hostWs) {
+        if (precisaSenha) {
           ws.send(JSON.stringify({ tipo: 'pedir_senha' }));
         } else {
-          clienteInfo.autenticado = true;
           ws.send(JSON.stringify({ tipo: 'acesso_liberado' }));
         }
 
@@ -121,7 +123,7 @@ wss.on('connection', (ws) => {
       }
 
     } catch (e) {
-      console.log('Erro:', e);
+      console.log('Erro no servidor:', e);
     }
   });
 
